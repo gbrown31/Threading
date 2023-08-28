@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Metadata.Ecma335;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Concurrent;
 
 namespace Threads.Test
 {
@@ -16,16 +10,18 @@ namespace Threads.Test
             ConcurrentBag<string> messages = new ConcurrentBag<string>();
 
             TrafficLightConcurrentDictionary trafficLight = new TrafficLightConcurrentDictionary();
+            ConcurrentQueue<int> carsCrossedInOrder = new ConcurrentQueue<int>();
+
             List<Task> tasks = new List<Task>()
             {
-                Task.Run(() => trafficLight.CarArrived(1, 1, 1, () => messages.Add("Turn green on road 1"), () => messages.Add("Car 1 has crossed"))),
-                Task.Run(() => trafficLight.CarArrived(2, 2, 3, () => messages.Add("Turn green on road 2"), () => messages.Add("Car 2 has crossed"))),
-                Task.Run(() => trafficLight.CarArrived(3, 1, 1,() => messages.Add("Turn green on road 1"),() => messages.Add("Car 3 has crossed")))
+                Task.Run(() => trafficLight.CarArrived(1, 1, 1, () => messages.Add("Turn green on road 1"), () => { messages.Add("Car 1 has crossed"); carsCrossedInOrder.Enqueue(1); })),
+                Task.Run(() => trafficLight.CarArrived(2, 2, 3, () => messages.Add("Turn green on road 2"), () => {messages.Add("Car 2 has crossed"); carsCrossedInOrder.Enqueue(2); })),
+                Task.Run(() => trafficLight.CarArrived(3, 1, 1,() => messages.Add("Turn green on road 1"),() => {messages.Add("Car 3 has crossed"); carsCrossedInOrder.Enqueue(3); }))
             };
 
             await Task.WhenAll(tasks);
 
-            Assert.True(messages.Count > 0);
+            Assert.True(carsCrossedInOrder.Count == 3);
         }
         [Fact]
         public async Task CallThreadsToCrossCarsResetEventAsync()
@@ -33,16 +29,18 @@ namespace Threads.Test
             ConcurrentBag<string> messages = new ConcurrentBag<string>();
 
             TrafficLightWitLock trafficLight = new TrafficLightWitLock();
+            ConcurrentQueue<int> carsCrossedInOrder = new ConcurrentQueue<int>();
+
             List<Task> tasks = new List<Task>()
             {
-                Task.Run(() => trafficLight.CarArrived(1, 1, 1, () => messages.Add("Turn green on road 1"), () => messages.Add("Car 1 has crossed road 1"))),
-                Task.Run(() => trafficLight.CarArrived(2, 2, 3, () => messages.Add("Turn green on road 2"), () => messages.Add("Car 2 has crossed road 2"))),
-                Task.Run(() => trafficLight.CarArrived(3, 1, 1,() => messages.Add("Turn green on road 1"),() => messages.Add("Car 3 has crossed road 1")))
+                Task.Run(() => trafficLight.CarArrived(1, 1, 1, () => messages.Add("Turn green on road 1"), () => { messages.Add("Car 1 has crossed"); carsCrossedInOrder.Enqueue(1); })),
+                Task.Run(() => trafficLight.CarArrived(2, 2, 3, () => messages.Add("Turn green on road 2"), () => {messages.Add("Car 2 has crossed"); carsCrossedInOrder.Enqueue(2); })),
+                Task.Run(() => trafficLight.CarArrived(3, 1, 1,() => messages.Add("Turn green on road 1"),() => {messages.Add("Car 3 has crossed"); carsCrossedInOrder.Enqueue(3); }))
             };
 
             await Task.WhenAll(tasks);
 
-            Assert.True(messages.Count > 0);
+            Assert.True(carsCrossedInOrder.Count == 3);
         }
     }
     public class TrafficLightWitLock
@@ -51,7 +49,6 @@ namespace Threads.Test
         private object trafficLightLock = new object();
         // shared state between methods
         private int roadAtGreen = 1;
-        private AutoResetEvent autoReset = new AutoResetEvent(false);
 
         public TrafficLightWitLock()
         {
@@ -67,7 +64,7 @@ namespace Threads.Test
         {
             lock (trafficLightLock)
             {
-                if(roadAtGreen != roadId)
+                if (roadAtGreen != roadId)
                 {
                     turnGreen();
                     roadAtGreen = roadId;
@@ -109,7 +106,7 @@ namespace Threads.Test
             {
                 // wait for queue of cars on other road to clear
                 bool carsWaitingOnOtherRoad = true;
-                while(carsWaitingOnOtherRoad)
+                while (carsWaitingOnOtherRoad)
                 {
                     carsWaitingOnOtherRoad = roadsAndCars[roadAtGreen].Count > 0;
                 }
@@ -122,9 +119,9 @@ namespace Threads.Test
             }
 
             var carQueue = roadsAndCars[roadId];
-            while(carQueue.Count > 0)
+            while (carQueue.Count > 0)
             {
-                if(carQueue.TryDequeue(out var car))
+                if (carQueue.TryDequeue(out var car))
                 {
                     car.Item2();
                 }
